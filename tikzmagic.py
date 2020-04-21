@@ -94,11 +94,13 @@ class TikzMagics(Magics):
 
         if size is not None:
             width, height = size
+            svg.setAttribute('width', '%dpx' % width)
+            svg.setAttribute('height', '%dpx' % height)
         else:
-            width, height = viewbox[2:]
+            width, height = (float(a) for a in viewbox[2:])
 
-        svg.setAttribute('width', '%dpx' % width)
-        svg.setAttribute('height', '%dpx' % height)
+            svg.setAttribute('width', '%dpt' % width)
+            svg.setAttribute('height', '%dpt' % height)
         return svg.toxml()
 
 
@@ -159,6 +161,34 @@ class TikzMagics(Magics):
 
         chdir(current_dir)
 
+    def _convert_pdf_to_cairo(self,dir,pdftocairo_path,plot_format='svg',width=None,height=None,resolution=None,extraparam=''):
+        current_dir = getcwd()
+        chdir(dir)
+        ex_param=' '+extraparam
+        if plot_format!='svg':
+            ex_param+=' -singlefile'
+            if width is not None and height is not None:
+                ex_param+=" -scale-to-x {} -scale-to-y {}".format(width,height)
+            elif width is not None:
+                ex_param+=" -scale-to {}".format(width)
+            elif height is not None:
+                ex_param+=" -scale-to {}".format(height)
+            elif resolution is not None:
+                ex_param+=" -r {}".format(resolution)
+        if plot_format=='jpg':
+            plot_format='jpeg'
+        ex_param+=' -{}'.format(plot_format)
+
+        try:
+            retcode = call("{} {} tikz.pdf".format(pdftocairo_path,ex_param), shell=True)
+            if retcode != 0:
+                print("pdftocairo terminated with signal", -retcode, file=sys.stderr)
+        except OSError as e:
+            print("pdftocairo execution failed:", e, file=sys.stderr)
+
+
+        chdir(current_dir)
+        
 
     def _convert_png_to_jpg(self, dir, imagemagick_path):
         current_dir = getcwd()
@@ -182,11 +212,15 @@ class TikzMagics(Magics):
         help='Scaling factor of plots. Default is "--scale 1".'
         )
     @argument(
-        '-s', '--size', action='store', type=str, default='400,240',
-        help='Pixel size of plots, "width,height". Default is "--size 400,240".'
+        '-s', '--size', action='store', type=str, default=None,
+        help='Pixel size of plots, "width,height". Default for png and jpeg is calculated from resolution.'
         )
     @argument(
-        '-f', '--format', action='store', type=str, default='png',
+        '-r', '--resolution', action='store', type=int, default=72,
+        help='Resolution of plots in ppi. Default for png and jpeg is "--resolution 72".'
+        )
+    @argument(
+        '-f', '--format', action='store', type=str, default='svg',
         help='Plot format (png, svg or jpg).'
         )
     @argument(
@@ -213,8 +247,8 @@ class TikzMagics(Magics):
         '-S', '--save', action='store', type=str, default=None,
         help='Save a copy to file, e.g., -S filename. Default is None'
         )
-    @argument('-i', '--imagemagick', action='store', type=str, default='convert',
-        help='Name of ImageMagick executable, optionally with full path. Default is "convert"'
+    @argument('-i', '--pdftocairo', action='store', type=str, default='pdftocairo',
+        help='Name of Poppler PDF-to-image executable, optionally with full path. Default is "pdftocairo"'
         )
     @argument('-po', '--pictureoptions', action='store', type=str, default='',
         help='Additional arguments to pass to the \\tikzpicture command.'
@@ -230,6 +264,9 @@ class TikzMagics(Magics):
 
     @argument('--tikzoptions', action='store', type=str, default='',
         help='Options to pass when loading TikZ or CircuiTikZ package.'
+        )
+    @argument('-u','--unit', action='store', type=str, default=None,
+        help='Default lenght unit (cm,mm,pt,in,ex,em,pc). If not specified default unit is cm.'
         )
 
     @needs_local_scope
@@ -276,15 +313,18 @@ class TikzMagics(Magics):
         args = parse_argstring(self.tikz, line)
         scale = args.scale
         size = args.size
-        width, height = size.split(',')
+        resolution = args.resolution
         plot_format = args.format
+        if plot_format=='jpeg':
+            plot_format='jpg'
         encoding = args.encoding
         tikz_library = args.library.split(',')
         pgfplots_library = args.pgfplotslibrary.split(',')
         latex_package = args.package.split(',')
-        imagemagick_path = args.imagemagick
+        pdftocairo_path = args.pdftocairo
         picture_options = args.pictureoptions
         tikz_options = args.tikzoptions
+        unit = args.unit
 
         # arguments 'code' in line are prepended to the cell lines
         if cell is None:
@@ -305,9 +345,6 @@ class TikzMagics(Magics):
 
         add_params = ""
 
-        if plot_format == 'png' or plot_format == 'jpg' or plot_format == 'jpeg':
-            add_params += "density=300,"
-
         # choose between CircuiTikZ and regular Tikz
         if args.circuitikz:
             tikz_env = 'circuitikz'
@@ -315,10 +352,13 @@ class TikzMagics(Magics):
         else:
             tikz_env = 'tikzpicture'
             tikz_package = 'tikz'
+            
+        if unit is not None:
+            picture_options+=",x=1{},y=1{},".format(unit,unit)
 
         tex = []
         tex.append('''
-\\documentclass[convert={convertexe={%(imagemagick_path)s},%(add_params)ssize=%(width)sx%(height)s,outext=.png},border=0pt]{standalone}
+\\documentclass[border=0pt]{standalone}
 ''' % locals())
 
         tex.append('\\usepackage[%(tikz_options)s]{%(tikz_package)s}\n' % locals())
@@ -356,7 +396,7 @@ class TikzMagics(Magics):
             return
 
         latex_log = self._run_latex(code, encoding, plot_dir)
-
+        
         key = 'TikZMagic.Tikz'
         display_data = []
 
@@ -365,21 +405,28 @@ class TikzMagics(Magics):
         if latex_log:
             self._publish_display_data(source=key, data={'text/plain': latex_log})
             return
-
-        if plot_format == 'jpg' or plot_format == 'jpeg':
-            self._convert_png_to_jpg(plot_dir, imagemagick_path)
-        elif plot_format == 'svg':
-            self._convert_pdf_to_svg(plot_dir)
-
+        
+        
+        if size is not None:
+            width, height = [int(s) for s in size.split(',')]
+            self._convert_pdf_to_cairo(plot_dir,pdftocairo_path,plot_format,width=width,height=height)
+        else:
+            self._convert_pdf_to_cairo(plot_dir,pdftocairo_path,plot_format,resolution=resolution)
+        
         image_filename = "%s/tikz.%s" % (plot_dir, plot_format)
 
         # Publish image
         try:
             image = open(image_filename, 'rb').read()
-            plot_mime_type = _mimetypes.get(plot_format, 'image/%s' % (plot_format))
-            width, height = [int(s) for s in size.split(',')]
-            if plot_format == 'svg':
-                image = self._fix_gnuplot_svg_size(image, size=(width, height))
+            if plot_format=='svg':
+                if size is not None:
+                    width, height = [int(s) for s in size.split(',')]
+                    image = self._fix_gnuplot_svg_size(image,size=(width,height))
+                else:
+                    image = self._fix_gnuplot_svg_size(image)
+                plot_mime_type = _mimetypes.get(plot_format, 'image/svg+xml')
+            else:
+                plot_mime_type = _mimetypes.get(plot_format, 'image/%s' % (plot_format))
             display_data.append((key, {plot_mime_type: image}))
 
         except IOError:
