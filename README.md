@@ -33,7 +33,7 @@ or by starting a cell with `%%tikz`, e.g.,
 - `-sc` or `--scale`: scaling factor of plots, default=1
 - `-s` or `--size`: pixel size of plots, e.g., `-s width,height`, Default for png and jpeg is calculated from resolution.
 - `-r` or `--resolution` resolution of plots in ppi. Default for png and jpeg is 72.
-- `-f` or `--format`: plot format (png, svg or jpg), default=png
+- `-f` or `--format`: plot format (png, svg or jpg), default=svg
 - `-e` or `--encoding`: text encoding, default=utf-8
 - `-x` or `--preamble`: LaTeX preamble to insert before tikz figure, default=None
 - `-p` or `--package`: LaTeX packages to load, separated by comma, e.g., `-p pgfplots,textcomp`, default=None
