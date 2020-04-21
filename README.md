@@ -4,7 +4,7 @@ IPython magics for generating figures with TikZ. You can select the output forma
 
 The package requires a working LaTeX installation and Popple pdftocairo.
 
-This differs from mkrphys's version in that it uses pdftocairo rather that ImageMagick, which due to a security breach has disabled it ability to convert pdf og most distributions. Further SVG are used as default format and SVG's are left at natural size rather then scaling to a fixed pixel size. If desired scaling can be done with either '-sc', '-r', '-s' or '-u' options.
+This differs from mkrphys's version in that it uses pdftocairo rather that ImageMagick, which due to a security breach has have it's ability to convert pdf disabled on most distributions. Further SVG are used as default format and SVG's are left at natural size rather then scaling to a fixed pixel size. If desired scaling can be done with either '-sc', '-r', '-s' or '-u' options.
 
 ## Installation
 
